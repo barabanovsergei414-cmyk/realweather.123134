@@ -1,0 +1,47 @@
+name: Build
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack any project zip stored in the repository
+        run: |
+          for z in $(find . -name "*.zip" -not -path "./.git/*"); do
+            if unzip -l "$z" | grep -q "settings.gradle"; then
+              echo "Unpacking $z"
+              unzip -o "$z" -d "unpacked_$(basename "$z" .zip)"
+            fi
+          done
+
+      - name: Find the Gradle project root
+        id: find
+        run: |
+          SETTINGS=$(find . -name settings.gradle -not -path "./.git/*" -not -path "*/build/*" | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "No settings.gradle found anywhere in the repository"
+            exit 1
+          fi
+          ROOT=$(dirname "$SETTINGS")
+          echo "Project root: $ROOT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Build the mod jar
+        run: |
+          cd "${{ steps.find.outputs.root }}"
+          gradle build --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mod-jar
+          path: ${{ steps.find.outputs.root }}/build/libs/*.jar
